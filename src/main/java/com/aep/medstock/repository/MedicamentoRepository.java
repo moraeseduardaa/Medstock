@@ -8,10 +8,6 @@ import java.util.List;
 
 public interface MedicamentoRepository extends MongoRepository<Medicamento, String> {
 
-
-    List<Medicamento> findByQuantidadeLessThan(Integer quantidade);
-
-
     List<Medicamento> findByValidadeLessThanEqual(LocalDate data);
 
 }
