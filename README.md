@@ -94,7 +94,13 @@ git clone https://github.com/moraeseduardaa/Medstock.git
 Entre na pasta:
 
 ```text
-cd medstock
+cd Medstock
+```
+
+Suba o banco de dados MongoDB via Docker:
+
+```text
+docker compose up -d
 ```
 
 Execute a aplicação:
@@ -120,6 +126,8 @@ http://localhost:8080/docs
 Para visualizar e testar os endpoints
 
 ## Testes
+
+O Docker Desktop precisa estar aberto antes de rodar os testes.
 
 O projeto possui testes automatizados utilizando **JUnit e Mockito**.
 
