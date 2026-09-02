@@ -226,13 +226,7 @@ class MedicamentoServiceTest {
         when(mapper.toResponse(medicamento))
                 .thenReturn(response);
 
-        /*
-         * Como o MedicamentoMapper é um Mock, o método updateModel()
-         * não executaria sua implementação real.
-         *
-         * Por isso, configuramos o Mockito para simular a atualização
-         * do objeto Medicamento.
-         */
+
         doAnswer(invocation -> {
 
             Medicamento med = invocation.getArgument(0);

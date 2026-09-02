@@ -69,7 +69,6 @@ class MedicamentoMapperTest {
         );
         assertEquals("LOT-002", medicamento.getLote());
 
-        // O ID não deve ser alterado pelo mapper
         assertEquals("1", medicamento.getId());
     }
 
