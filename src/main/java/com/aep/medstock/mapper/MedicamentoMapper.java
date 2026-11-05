@@ -1,10 +1,14 @@
+
 package com.aep.medstock.mapper;
 
 import com.aep.medstock.dto.*;
+import com.aep.medstock.model.LoteEstoque;
 import com.aep.medstock.model.Medicamento;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class MedicamentoMapper {
@@ -17,6 +21,14 @@ public class MedicamentoMapper {
         medicamento.setValidade(request.getValidade());
         medicamento.setLote(request.getLote());
         medicamento.setDataEntrada(LocalDate.now());
+
+        LoteEstoque lote = new LoteEstoque();
+        lote.setNumero(request.getLote());
+        lote.setQuantidade(request.getQuantidade());
+        lote.setValidade(request.getValidade());
+
+        medicamento.setLotes(new ArrayList<>(List.of(lote)));
+
         return medicamento;
     }
 
