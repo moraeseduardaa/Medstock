@@ -5,7 +5,9 @@ import com.aep.medstock.exception.EstoqueException;
 import com.aep.medstock.exception.MedicamentoException;
 import com.aep.medstock.mapper.MedicamentoMapper;
 import com.aep.medstock.model.Medicamento;
+import com.aep.medstock.model.LoteEstoque;
 import com.aep.medstock.repository.MedicamentoRepository;
+import com.aep.medstock.repository.MovimentacaoEstoqueRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,15 +28,16 @@ class MedicamentoServiceTest {
     private MedicamentoRepository repository;
 
     @Mock
+    private MovimentacaoEstoqueRepository movimentacaoRepository;
+
+    @Mock
     private MedicamentoMapper mapper;
 
     @InjectMocks
     private MedicamentoService service;
 
-
     @Test
     void deveCriarMedicamento() {
-
         MedicamentoCreate request = new MedicamentoCreate();
         request.setNome("Paracetamol");
         request.setQuantidade(100);
@@ -69,10 +72,8 @@ class MedicamentoServiceTest {
         verify(mapper).toResponse(medicamento);
     }
 
-
     @Test
     void deveBuscarMedicamentoPorId() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
@@ -94,10 +95,8 @@ class MedicamentoServiceTest {
         verify(mapper).toResponse(medicamento);
     }
 
-
     @Test
     void deveLancarExcecaoQuandoMedicamentoNaoExiste() {
-
         when(repository.findById("999")).thenReturn(Optional.empty());
 
         assertThrows(
@@ -108,17 +107,26 @@ class MedicamentoServiceTest {
         verify(repository).findById("999");
     }
 
-
     @Test
     void deveRegistrarEntradaNoEstoque() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
         medicamento.setQuantidade(100);
+        medicamento.setLote("LOT-001");
+        medicamento.setValidade(LocalDate.of(2027, 12, 31));
+
+        LoteEstoque loteExistente = new LoteEstoque();
+        loteExistente.setNumero("LOT-001");
+        loteExistente.setQuantidade(100);
+        loteExistente.setValidade(LocalDate.of(2027, 12, 31));
+
+        medicamento.setLotes(new java.util.ArrayList<>(List.of(loteExistente)));
 
         EntradaEstoque request = new EntradaEstoque();
         request.setQuantidade(50);
+        request.setLote("LOT-002");
+        request.setValidade(LocalDate.of(2028, 12, 31));
 
         MedicamentoResponse response = new MedicamentoResponse();
         response.setId("1");
@@ -129,25 +137,37 @@ class MedicamentoServiceTest {
         when(repository.save(medicamento)).thenReturn(medicamento);
         when(mapper.toResponse(medicamento)).thenReturn(response);
 
-        MedicamentoResponse resultado =
-                service.registrarEntrada("1", request);
+        MedicamentoResponse resultado = service.registrarEntrada("1", request);
 
         assertEquals(150, medicamento.getQuantidade());
         assertEquals(150, resultado.getQuantidade());
+        assertEquals(2, medicamento.getLotes().size());
+
+        LoteEstoque novoLote = medicamento.getLotes().get(1);
+
+        assertEquals("LOT-002", novoLote.getNumero());
+        assertEquals(50, novoLote.getQuantidade());
+        assertEquals(LocalDate.of(2028, 12, 31), novoLote.getValidade());
 
         verify(repository).findById("1");
         verify(repository).save(medicamento);
+        verify(movimentacaoRepository).save(any());
         verify(mapper).toResponse(medicamento);
     }
 
-
     @Test
     void deveRegistrarSaidaNoEstoque() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
         medicamento.setQuantidade(100);
+
+        LoteEstoque lote = new LoteEstoque();
+        lote.setNumero("LOT-001");
+        lote.setQuantidade(100);
+        lote.setValidade(LocalDate.now().plusDays(60));
+
+        medicamento.setLotes(new java.util.ArrayList<>(List.of(lote)));
 
         SaidaEstoque request = new SaidaEstoque();
         request.setQuantidade(30);
@@ -161,21 +181,18 @@ class MedicamentoServiceTest {
         when(repository.save(medicamento)).thenReturn(medicamento);
         when(mapper.toResponse(medicamento)).thenReturn(response);
 
-        MedicamentoResponse resultado =
-                service.registrarSaida("1", request);
+        MedicamentoResponse resultado = service.registrarSaida("1", request);
 
         assertEquals(70, medicamento.getQuantidade());
         assertEquals(70, resultado.getQuantidade());
+        assertEquals(70, lote.getQuantidade());
 
-        verify(repository).findById("1");
         verify(repository).save(medicamento);
-        verify(mapper).toResponse(medicamento);
+        verify(movimentacaoRepository).save(any());
     }
-
 
     @Test
     void deveLancarExcecaoQuandoSaidaMaiorQueEstoque() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setQuantidade(20);
@@ -194,12 +211,11 @@ class MedicamentoServiceTest {
 
         verify(repository).findById("1");
         verify(repository, never()).save(any());
+        verify(movimentacaoRepository, never()).save(any());
     }
-
 
     @Test
     void deveAtualizarMedicamento() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
@@ -217,18 +233,11 @@ class MedicamentoServiceTest {
         response.setNome("Paracetamol 500mg");
         response.setQuantidade(200);
 
-        when(repository.findById("1"))
-                .thenReturn(Optional.of(medicamento));
-
-        when(repository.save(medicamento))
-                .thenReturn(medicamento);
-
-        when(mapper.toResponse(medicamento))
-                .thenReturn(response);
-
+        when(repository.findById("1")).thenReturn(Optional.of(medicamento));
+        when(repository.save(medicamento)).thenReturn(medicamento);
+        when(mapper.toResponse(medicamento)).thenReturn(response);
 
         doAnswer(invocation -> {
-
             Medicamento med = invocation.getArgument(0);
             MedicamentoUpdate req = invocation.getArgument(1);
 
@@ -239,31 +248,14 @@ class MedicamentoServiceTest {
             med.setLote(req.getLote());
 
             return null;
-
         }).when(mapper).updateModel(medicamento, request);
 
-        MedicamentoResponse resultado =
-                service.atualizar("1", request);
+        MedicamentoResponse resultado = service.atualizar("1", request);
 
-        assertEquals(
-                "Paracetamol 500mg",
-                medicamento.getNome()
-        );
-
-        assertEquals(
-                200,
-                medicamento.getQuantidade()
-        );
-
-        assertEquals(
-                "Paracetamol 500mg",
-                resultado.getNome()
-        );
-
-        assertEquals(
-                200,
-                resultado.getQuantidade()
-        );
+        assertEquals("Paracetamol 500mg", medicamento.getNome());
+        assertEquals(200, medicamento.getQuantidade());
+        assertEquals("Paracetamol 500mg", resultado.getNome());
+        assertEquals(200, resultado.getQuantidade());
 
         verify(repository).findById("1");
         verify(repository).save(medicamento);
@@ -271,15 +263,12 @@ class MedicamentoServiceTest {
         verify(mapper).toResponse(medicamento);
     }
 
-
     @Test
     void deveDeletarMedicamento() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
 
-        when(repository.findById("1"))
-                .thenReturn(Optional.of(medicamento));
+        when(repository.findById("1")).thenReturn(Optional.of(medicamento));
 
         service.deletar("1");
 
@@ -287,10 +276,8 @@ class MedicamentoServiceTest {
         verify(repository).deleteById("1");
     }
 
-
     @Test
     void deveListarEstoqueBaixo() {
-
         Medicamento medicamento1 = new Medicamento();
         medicamento1.setId("1");
         medicamento1.setNome("Paracetamol");
@@ -307,35 +294,24 @@ class MedicamentoServiceTest {
         summary.setId("1");
         summary.setNome("Paracetamol");
 
-        when(repository.findAll())
-                .thenReturn(List.of(medicamento1, medicamento2));
+        when(repository.findAll()).thenReturn(List.of(medicamento1, medicamento2));
+        when(mapper.toSummaryResponse(medicamento1)).thenReturn(summary);
 
-        when(mapper.toSummaryResponse(medicamento1))
-                .thenReturn(summary);
-
-        List<MedicamentoSummary> resultado =
-                service.listarEstoqueBaixo();
+        List<MedicamentoSummary> resultado = service.listarEstoqueBaixo();
 
         assertEquals(1, resultado.size());
-        assertEquals(
-                "Paracetamol",
-                resultado.get(0).getNome()
-        );
+        assertEquals("Paracetamol", resultado.get(0).getNome());
 
         verify(repository).findAll();
         verify(mapper).toSummaryResponse(medicamento1);
     }
 
-
     @Test
     void deveListarVencimentoProximo() {
-
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
-        medicamento.setValidade(
-                LocalDate.now().plusDays(10)
-        );
+        medicamento.setValidade(LocalDate.now().plusDays(10));
 
         MedicamentoSummary summary = new MedicamentoSummary();
         summary.setId("1");
@@ -343,26 +319,122 @@ class MedicamentoServiceTest {
 
         when(repository.findByValidadeLessThanEqual(any(LocalDate.class)))
                 .thenReturn(List.of(medicamento));
+        when(mapper.toSummaryResponse(medicamento)).thenReturn(summary);
 
-        when(mapper.toSummaryResponse(medicamento))
-                .thenReturn(summary);
+        List<MedicamentoSummary> resultado = service.listarVencimentoProximo();
 
-        List<MedicamentoSummary> resultado =
-                service.listarVencimentoProximo();
+        assertEquals(1, resultado.size());
+        assertEquals("Paracetamol", resultado.get(0).getNome());
+
+        verify(repository).findByValidadeLessThanEqual(any(LocalDate.class));
+        verify(mapper).toSummaryResponse(medicamento);
+    }
+
+    @Test
+    void deveLancarExcecaoAoRegistrarEntradaDeMedicamentoInexistente() {
+        EntradaEstoque request = new EntradaEstoque();
+        request.setQuantidade(10);
+
+        when(repository.findById("999")).thenReturn(Optional.empty());
+
+        assertThrows(
+                MedicamentoException.class,
+                () -> service.registrarEntrada("999", request)
+        );
+
+        verify(repository).findById("999");
+        verify(repository, never()).save(any());
+        verify(movimentacaoRepository, never()).save(any());
+    }
+
+    @Test
+    void deveLancarExcecaoAoRegistrarSaidaDeMedicamentoInexistente() {
+        SaidaEstoque request = new SaidaEstoque();
+        request.setQuantidade(5);
+
+        when(repository.findById("999")).thenReturn(Optional.empty());
+
+        assertThrows(
+                MedicamentoException.class,
+                () -> service.registrarSaida("999", request)
+        );
+
+        verify(repository).findById("999");
+        verify(repository, never()).save(any());
+        verify(movimentacaoRepository, never()).save(any());
+    }
+
+    @Test
+    void deveLancarExcecaoAoDeletarMedicamentoInexistente() {
+        when(repository.findById("999")).thenReturn(Optional.empty());
+
+        assertThrows(
+                MedicamentoException.class,
+                () -> service.deletar("999")
+        );
+
+        verify(repository).findById("999");
+        verify(repository, never()).deleteById(any());
+    }
+
+    @Test
+    void deveLancarExcecaoAoAtualizarMedicamentoInexistente() {
+        MedicamentoUpdate request = new MedicamentoUpdate();
+
+        when(repository.findById("999")).thenReturn(Optional.empty());
+
+        assertThrows(
+                MedicamentoException.class,
+                () -> service.atualizar("999", request)
+        );
+
+        verify(repository).findById("999");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void deveListarTodosMedicamentos() {
+        Medicamento medicamento = new Medicamento();
+        medicamento.setId("1");
+        medicamento.setNome("Paracetamol");
+
+        when(repository.findAll()).thenReturn(List.of(medicamento));
+        when(mapper.toSummaryResponse(medicamento)).thenReturn(null);
+
+        List<MedicamentoSummary> resultado = service.listarTodos();
 
         assertEquals(1, resultado.size());
 
-        assertEquals(
-                "Paracetamol",
-                resultado.get(0).getNome()
+        verify(repository).findAll();
+        verify(mapper).toSummaryResponse(medicamento);
+    }
+
+    @Test
+    void deveRejeitarEntradaComValidadeDiferenteNoMesmoLote() {
+        Medicamento medicamento = new Medicamento();
+        medicamento.setId("1");
+        medicamento.setQuantidade(100);
+
+        LoteEstoque lote = new LoteEstoque();
+        lote.setNumero("LOT-001");
+        lote.setQuantidade(100);
+        lote.setValidade(LocalDate.of(2027, 12, 31));
+
+        medicamento.setLotes(List.of(lote));
+
+        EntradaEstoque request = new EntradaEstoque();
+        request.setQuantidade(10);
+        request.setLote("LOT-001");
+        request.setValidade(LocalDate.of(2028, 12, 31));
+
+        when(repository.findById("1")).thenReturn(Optional.of(medicamento));
+
+        assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> service.registrarEntrada("1", request)
         );
 
-        verify(repository)
-                .findByValidadeLessThanEqual(
-                        any(LocalDate.class)
-                );
-
-        verify(mapper)
-                .toSummaryResponse(medicamento);
+        verify(repository, never()).save(any());
+        verify(movimentacaoRepository, never()).save(any());
     }
 }
