@@ -34,10 +34,7 @@ public class MedicamentoMapper {
 
     public void updateModel(Medicamento medicamento, MedicamentoUpdate request) {
         medicamento.setNome(request.getNome());
-        medicamento.setQuantidade(request.getQuantidade());
         medicamento.setQuantidadeMinima(request.getQuantidadeMinima());
-        medicamento.setValidade(request.getValidade());
-        medicamento.setLote(request.getLote());
     }
 
     public MedicamentoResponse toResponse(Medicamento medicamento) {
