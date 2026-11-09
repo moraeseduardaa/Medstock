@@ -36,6 +36,25 @@ class MedicamentoServiceTest {
     @InjectMocks
     private MedicamentoService service;
 
+    private Medicamento criarMedicamentoComLotes(
+            String id,
+            String nome,
+            LoteEstoque... lotes
+    ) {
+        Medicamento medicamento = new Medicamento();
+        medicamento.setId(id);
+        medicamento.setNome(nome);
+        medicamento.setLotes(List.of(lotes));
+        return medicamento;
+    }
+
+    private LoteEstoque criarLote(Integer quantidade, LocalDate validade) {
+        LoteEstoque lote = new LoteEstoque();
+        lote.setQuantidade(quantidade);
+        lote.setValidade(validade);
+        return lote;
+    }
+
     @Test
     void deveCriarMedicamento() {
         MedicamentoCreate request = new MedicamentoCreate();
@@ -214,52 +233,45 @@ class MedicamentoServiceTest {
         verify(movimentacaoRepository, never()).save(any());
     }
 
+
     @Test
     void deveAtualizarMedicamento() {
+
         Medicamento medicamento = new Medicamento();
         medicamento.setId("1");
         medicamento.setNome("Paracetamol");
         medicamento.setQuantidade(100);
+        medicamento.setQuantidadeMinima(20);
 
         MedicamentoUpdate request = new MedicamentoUpdate();
         request.setNome("Paracetamol 500mg");
-        request.setQuantidade(200);
         request.setQuantidadeMinima(30);
-        request.setValidade(LocalDate.of(2028, 12, 31));
-        request.setLote("LOT-002");
 
         MedicamentoResponse response = new MedicamentoResponse();
         response.setId("1");
         response.setNome("Paracetamol 500mg");
-        response.setQuantidade(200);
+        response.setQuantidade(100);
+        response.setQuantidadeMinima(30);
 
-        when(repository.findById("1")).thenReturn(Optional.of(medicamento));
-        when(repository.save(medicamento)).thenReturn(medicamento);
-        when(mapper.toResponse(medicamento)).thenReturn(response);
+        when(repository.findById("1"))
+                .thenReturn(Optional.of(medicamento));
 
-        doAnswer(invocation -> {
-            Medicamento med = invocation.getArgument(0);
-            MedicamentoUpdate req = invocation.getArgument(1);
+        when(repository.save(medicamento))
+                .thenReturn(medicamento);
 
-            med.setNome(req.getNome());
-            med.setQuantidade(req.getQuantidade());
-            med.setQuantidadeMinima(req.getQuantidadeMinima());
-            med.setValidade(req.getValidade());
-            med.setLote(req.getLote());
+        when(mapper.toResponse(medicamento))
+                .thenReturn(response);
 
-            return null;
-        }).when(mapper).updateModel(medicamento, request);
+        MedicamentoResponse resultado =
+                service.atualizar("1", request);
 
-        MedicamentoResponse resultado = service.atualizar("1", request);
-
-        assertEquals("Paracetamol 500mg", medicamento.getNome());
-        assertEquals(200, medicamento.getQuantidade());
         assertEquals("Paracetamol 500mg", resultado.getNome());
-        assertEquals(200, resultado.getQuantidade());
+        assertEquals(100, resultado.getQuantidade());
+        assertEquals(30, resultado.getQuantidadeMinima());
 
         verify(repository).findById("1");
-        verify(repository).save(medicamento);
         verify(mapper).updateModel(medicamento, request);
+        verify(repository).save(medicamento);
         verify(mapper).toResponse(medicamento);
     }
 
@@ -307,27 +319,62 @@ class MedicamentoServiceTest {
     }
 
     @Test
-    void deveListarVencimentoProximo() {
-        Medicamento medicamento = new Medicamento();
-        medicamento.setId("1");
-        medicamento.setNome("Paracetamol");
-        medicamento.setValidade(LocalDate.now().plusDays(10));
+    void deveListarVencimentoProximoConsiderandoValidadeDosLotes() {
+        LocalDate hoje = LocalDate.now();
 
-        MedicamentoSummary summary = new MedicamentoSummary();
-        summary.setId("1");
-        summary.setNome("Paracetamol");
+        Medicamento medicamentoHoje = criarMedicamentoComLotes(
+                "1", "Medicamento Hoje",
+                criarLote(5, hoje)
+        );
 
-        when(repository.findByValidadeLessThanEqual(any(LocalDate.class)))
-                .thenReturn(List.of(medicamento));
-        when(mapper.toSummaryResponse(medicamento)).thenReturn(summary);
+        Medicamento medicamento30Dias = criarMedicamentoComLotes(
+                "2", "Medicamento 30 Dias",
+                criarLote(10, hoje.plusDays(30))
+        );
+
+        Medicamento medicamentoDoisLotes = criarMedicamentoComLotes(
+                "3", "Medicamento Dois Lotes",
+                criarLote(5, hoje.plusDays(10)),
+                criarLote(8, hoje.plusDays(20))
+        );
+
+        Medicamento medicamentoInvalido = criarMedicamentoComLotes(
+                "4", "Medicamento Invalido",
+                criarLote(10, hoje.minusDays(1)),
+                criarLote(10, hoje.plusDays(31)),
+                criarLote(0, hoje.plusDays(5)),
+                criarLote(10, null),
+                criarLote(null, hoje.plusDays(5))
+        );
+
+        List<Medicamento> medicamentos = List.of(
+                medicamentoHoje,
+                medicamento30Dias,
+                medicamentoDoisLotes,
+                medicamentoInvalido
+        );
+
+        when(repository.findAll()).thenReturn(medicamentos);
+
+        when(mapper.toSummaryResponse(medicamentoHoje))
+                .thenReturn(new MedicamentoSummary());
+
+        when(mapper.toSummaryResponse(medicamento30Dias))
+                .thenReturn(new MedicamentoSummary());
+
+        when(mapper.toSummaryResponse(medicamentoDoisLotes))
+                .thenReturn(new MedicamentoSummary());
 
         List<MedicamentoSummary> resultado = service.listarVencimentoProximo();
 
-        assertEquals(1, resultado.size());
-        assertEquals("Paracetamol", resultado.get(0).getNome());
+        assertEquals(3, resultado.size());
 
-        verify(repository).findByValidadeLessThanEqual(any(LocalDate.class));
-        verify(mapper).toSummaryResponse(medicamento);
+        verify(repository).findAll();
+        verify(mapper).toSummaryResponse(medicamentoHoje);
+        verify(mapper).toSummaryResponse(medicamento30Dias);
+        verify(mapper).toSummaryResponse(medicamentoDoisLotes);
+
+        verify(mapper, never()).toSummaryResponse(medicamentoInvalido);
     }
 
     @Test

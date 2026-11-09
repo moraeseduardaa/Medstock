@@ -1,6 +1,8 @@
 
 package com.aep.medstock.mapper;
 
+import com.aep.medstock.model.LoteEstoque;
+import java.util.List;
 import com.aep.medstock.dto.MedicamentoCreate;
 import com.aep.medstock.dto.MedicamentoResponse;
 import com.aep.medstock.dto.MedicamentoSummary;
@@ -39,6 +41,7 @@ class MedicamentoMapperTest {
         assertEquals(LocalDate.now(), medicamento.getDataEntrada());
     }
 
+
     @Test
     void deveAtualizarModelSemAlterarEstoqueELotes() {
 
@@ -50,12 +53,16 @@ class MedicamentoMapperTest {
         medicamento.setValidade(LocalDate.of(2027, 12, 31));
         medicamento.setLote("LOT-001");
 
+        LoteEstoque lote = new LoteEstoque();
+        lote.setNumero("LOT-001");
+        lote.setQuantidade(100);
+        lote.setValidade(LocalDate.of(2027, 12, 31));
+
+        medicamento.setLotes(List.of(lote));
+
         MedicamentoUpdate request = new MedicamentoUpdate();
         request.setNome("Paracetamol 500mg");
-        request.setQuantidade(200);
         request.setQuantidadeMinima(30);
-        request.setValidade(LocalDate.of(2028, 12, 31));
-        request.setLote("LOT-002");
 
         mapper.updateModel(medicamento, request);
 
@@ -69,6 +76,16 @@ class MedicamentoMapperTest {
         );
 
         assertEquals("LOT-001", medicamento.getLote());
+
+        assertEquals(1, medicamento.getLotes().size());
+        assertEquals("LOT-001", medicamento.getLotes().get(0).getNumero());
+        assertEquals(100, medicamento.getLotes().get(0).getQuantidade());
+
+        assertEquals(
+                LocalDate.of(2027, 12, 31),
+                medicamento.getLotes().get(0).getValidade()
+        );
+
         assertEquals("1", medicamento.getId());
     }
 
