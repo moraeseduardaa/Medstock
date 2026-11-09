@@ -159,10 +159,20 @@ public class MedicamentoService {
     }
 
     public List<MedicamentoSummary> listarVencimentoProximo() {
-        LocalDate limite = LocalDate.now().plusDays(30);
+        LocalDate hoje = LocalDate.now();
+        LocalDate limite = hoje.plusDays(30);
 
-        return repository.findByValidadeLessThanEqual(limite)
+        return repository.findAll()
                 .stream()
+                .filter(medicamento -> medicamento.getLotes() != null
+                        && medicamento.getLotes().stream().anyMatch(lote ->
+                        lote != null
+                                && lote.getValidade() != null
+                                && lote.getQuantidade() != null
+                                && lote.getQuantidade() > 0
+                                && !lote.getValidade().isBefore(hoje)
+                                && !lote.getValidade().isAfter(limite)
+                ))
                 .map(mapper::toSummaryResponse)
                 .toList();
     }
